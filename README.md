@@ -87,3 +87,40 @@ L'application est entièrement Dockerisée et peut être déployée en une seule
 ### Spécificités Docker
 *   Le dossier contenant la base de données SQLite est monté dans le répertoire local `./data` afin que vos configurations de serveurs restent persistées lors des mises à jour du conteneur.
 *   La commande de démarrage du conteneur applique automatiquement les modifications de schéma de base de données (`npx prisma db push`) avant de lancer le bot.
+
+---
+
+## ☁️ Publication sur Docker Hub
+
+Si vous souhaitez héberger votre image sur Docker Hub pour la déployer sur un serveur distant sans avoir à recompiler le code :
+
+### 1. Construire et taguer l'image
+```bash
+docker compose build
+```
+*(Cela génère localement l'image `k0bus/minestrator-discord-bot:latest`)*
+
+### 2. Se connecter et pousser sur Docker Hub
+```bash
+docker login
+docker push k0bus/minestrator-discord-bot:latest
+```
+
+### 3. Utilisation sur le serveur cible
+Sur votre serveur de production, créez simplement un fichier `docker-compose.yml` (en retirant la directive `build: .` pour utiliser directement l'image distante) :
+```yaml
+services:
+  bot:
+    image: k0bus/minestrator-discord-bot:latest
+    container_name: minestrator_discord_bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - CLIENT_ID=${CLIENT_ID}
+      - DATABASE_ENCRYPTION_KEY=${DATABASE_ENCRYPTION_KEY}
+      - DATABASE_URL=file:/app/data/dev.db
+```
+Et lancez avec `docker compose up -d`.
+
