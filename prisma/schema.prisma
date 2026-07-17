@@ -1,0 +1,55 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Guild {
+  id        String   @id // Discord Guild ID
+  tokens    Token[]
+  servers   Server[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Token {
+  id           String   @id @default(uuid())
+  guildId      String
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  alias        String   // Friendly name for this MineStrator API key
+  encryptedKey String   // Encrypted MineStrator API key
+  servers      Server[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([guildId, alias])
+}
+
+model Server {
+  id                  String   @id @default(uuid())
+  guildId             String
+  guild               Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  tokenId             String
+  token               Token    @relation(fields: [tokenId], references: [id])
+  minestratorServerId String   // Server identifier in the MineStrator API
+  name                String   // Friendly name for this server instance
+  gameType            String   // Game identifier (e.g., "PALWORLD")
+  host                String   // IP/Host for RCON connection
+  port                Int      // Game Port
+  rconPort            Int      @default(25575) // RCON Port
+  password            String   // RCON Password
+  autoStopEnabled     Boolean  @default(false)
+  autoStopTimeout     Int      @default(15) // Timeout in minutes when empty
+  discordChannelId    String?  // Channel where the interactive embed is located
+  discordMessageId    String?  // Message ID of the interactive embed
+  eggIcon             String?  // Filename of the game logo
+  allowedUsers        String   @default("[]") // JSON array of allowed user IDs
+  allowedRoles        String   @default("[]") // JSON array of allowed role IDs
+  logChannelId        String?  // Channel for announcements and player logs
+  lastActiveAt        DateTime @default(now()) // Last time players were detected > 0
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

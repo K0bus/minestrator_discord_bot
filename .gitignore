@@ -1,0 +1,18 @@
+# Dependency directories
+node_modules/
+
+# TypeScript build output
+dist/
+
+# SQLite databases
+data/
+*.db
+*.db-journal
+
+# Local environment configuration
+.env
+.env.local
+
+# Operating System files
+.DS_Store
+Thumbs.db

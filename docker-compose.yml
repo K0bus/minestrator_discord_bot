@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: minestrator_discord_bot
+    restart: unless-stopped
+    volumes:
+      # Persists the SQLite database file
+      - ./data:/app/data
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - CLIENT_ID=${CLIENT_ID}
+      - DATABASE_ENCRYPTION_KEY=${DATABASE_ENCRYPTION_KEY}
+      # Point to the persistent data volume
+      - DATABASE_URL=file:/app/data/dev.db
