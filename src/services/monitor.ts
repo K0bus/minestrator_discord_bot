@@ -1,6 +1,6 @@
 import { Client, TextChannel, DiscordAPIError } from 'discord.js';
 import { PrismaClient } from '@prisma/client';
-import { PalworldDriver } from '../drivers/palworld.js';
+import { GameDriverFactory } from '../drivers/factory.js';
 import { MinestratorClient } from './minestrator.js';
 import { decrypt } from './encryption.js';
 import { createServerEmbed, createControlButtons } from './embeds.js';
@@ -10,7 +10,7 @@ export class MonitorService {
   private prisma: PrismaClient;
   private intervalId: NodeJS.Timeout | null = null;
   private isScanning = false;
-  private lastKnownStatuses = new Map<string, 'online' | 'offline' | 'error'>();
+  private lastKnownStatuses = new Map<string, string>();
   private lastKnownPlayers = new Map<string, string[]>();
 
   constructor(client: Client, prisma: PrismaClient) {
@@ -64,14 +64,11 @@ export class MonitorService {
 
       for (const server of servers) {
         try {
-          // Initialize appropriate game driver
-          let driver;
-          if (server.gameType === 'PALWORLD') {
-            driver = new PalworldDriver(server.host, server.rconPort, server.password);
-          } else {
-            console.warn(`[MonitorService] Unsupported game type "${server.gameType}" for server ${server.name}.`);
-            continue;
-          }
+          const decryptedKey = decrypt(server.token.encryptedKey);
+          const minestrator = new MinestratorClient(decryptedKey, server.minestratorServerId);
+
+          // Initialize appropriate game driver via GameDriverFactory
+          const driver = GameDriverFactory.createDriver(server, minestrator);
 
           // Fetch server telemetry
           const telemetry = await driver.getTelemetry();
@@ -85,8 +82,20 @@ export class MonitorService {
             try {
               const logChannel = await this.client.channels.fetch(server.logChannelId);
               if (logChannel && 'send' in logChannel && typeof logChannel.send === 'function') {
-                const statusEmoji = telemetry.status === 'online' ? '🟢' : '🔴';
-                const statusWord = telemetry.status === 'online' ? 'EN LIGNE' : 'HORS LIGNE';
+                let statusEmoji = '🔴';
+                let statusWord = 'HORS LIGNE';
+
+                if (telemetry.status === 'online') {
+                  statusEmoji = '🟢';
+                  statusWord = 'EN LIGNE';
+                } else if (telemetry.status === 'restarting') {
+                  statusEmoji = '🔄';
+                  statusWord = 'EN REDÉMARRAGE';
+                } else if (telemetry.status === 'error') {
+                  statusEmoji = '⚠️';
+                  statusWord = 'EN ERREUR';
+                }
+
                 await logChannel.send({
                   content: `${statusEmoji} Le serveur **${server.name}** est maintenant **${statusWord}**.`
                 });
@@ -147,9 +156,6 @@ export class MonitorService {
                 if (elapsedMin >= server.autoStopTimeout) {
                   console.log(`[MonitorService] Server "${server.name}" has been empty for ${elapsedMin.toFixed(1)} minutes (Threshold: ${server.autoStopTimeout} min). Auto-stopping...`);
                   
-                  const decryptedKey = decrypt(server.token.encryptedKey);
-                  const minestrator = new MinestratorClient(decryptedKey, server.minestratorServerId);
-                  
                   const result = await minestrator.executePowerAction('stop');
                   if (result.success) {
                     console.log(`[MonitorService] Server "${server.name}" stopped successfully.`);
@@ -168,7 +174,7 @@ export class MonitorService {
               }
             }
           } else {
-            // Server is offline/error: reset idle timer so it starts fresh when server boots up
+            // Server is offline/error/restarting: reset idle timer so it starts fresh when server boots up
             if (now.getTime() - lastActive.getTime() > 120000) { // Limit database writes
               lastActive = now;
               await this.prisma.server.update({

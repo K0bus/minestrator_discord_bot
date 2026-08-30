@@ -78,10 +78,21 @@ async function handleServerSelection(interaction: StringSelectMenuInteraction): 
     const eggName = serverInfo?.egg_name || '';
 
     // Auto-detect Game Type from egg_name
-    let guessedGameType = '';
-    if (eggName.toLowerCase().includes('palworld')) {
+    let guessedGameType = 'MINECRAFT';
+    const eggLower = eggName.toLowerCase();
+    if (eggLower.includes('palworld')) {
       guessedGameType = 'PALWORLD';
-    } else if (eggName.toLowerCase().includes('minecraft')) {
+    } else if (eggLower.includes('valheim')) {
+      guessedGameType = 'VALHEIM';
+    } else if (eggLower.includes('ark')) {
+      if (eggLower.includes('ascended') || eggLower.includes('sa')) {
+        guessedGameType = 'ARKSA';
+      } else {
+        guessedGameType = 'ARK';
+      }
+    } else if (eggLower.includes('satisfactory')) {
+      guessedGameType = 'SATISFACTORY';
+    } else if (eggLower.includes('minecraft')) {
       guessedGameType = 'MINECRAFT';
     }
 
@@ -91,9 +102,11 @@ async function handleServerSelection(interaction: StringSelectMenuInteraction): 
       .setPlaceholder('Choisissez le type de jeu...');
 
     const gameOptions = [
-      { label: 'Palworld', value: 'PALWORLD', description: 'Jeu Palworld (Support RCON complet)' },
+      { label: 'Palworld', value: 'PALWORLD', description: 'Jeu Palworld (Support RCON et Query)' },
+      { label: 'ARK: Survival Evolved', value: 'ARK', description: 'Serveur ARK: SE (Query UDP)' },
+      { label: 'ARK: Survival Ascended', value: 'ARKSA', description: 'Serveur ARK: SA (Query UDP)' },
+      { label: 'Valheim', value: 'VALHEIM', description: 'Serveur Valheim (Query UDP)' },
       { label: 'Minecraft', value: 'MINECRAFT', description: 'Serveur de jeu Minecraft' },
-      { label: 'Ark Survival Evolved', value: 'ARK', description: 'Serveur de jeu Ark' },
       { label: 'Satisfactory', value: 'SATISFACTORY', description: 'Serveur de jeu Satisfactory' }
     ];
 
@@ -161,9 +174,11 @@ async function handleGameTypeSelection(interaction: StringSelectMenuInteraction)
       .setPlaceholder('Choisissez le type de jeu...');
 
     const gameOptions = [
-      { label: 'Palworld', value: 'PALWORLD', description: 'Jeu Palworld (Support RCON complet)' },
+      { label: 'Palworld', value: 'PALWORLD', description: 'Jeu Palworld (Support RCON et Query)' },
+      { label: 'ARK: Survival Evolved', value: 'ARK', description: 'Serveur ARK: SE (Query UDP)' },
+      { label: 'ARK: Survival Ascended', value: 'ARKSA', description: 'Serveur ARK: SA (Query UDP)' },
+      { label: 'Valheim', value: 'VALHEIM', description: 'Serveur Valheim (Query UDP)' },
       { label: 'Minecraft', value: 'MINECRAFT', description: 'Serveur de jeu Minecraft' },
-      { label: 'Ark Survival Evolved', value: 'ARK', description: 'Serveur de jeu Ark' },
       { label: 'Satisfactory', value: 'SATISFACTORY', description: 'Serveur de jeu Satisfactory' }
     ];
 
@@ -273,6 +288,12 @@ export async function handleContinueButton(interaction: Interaction): Promise<vo
 
     // 3. Construct Modal
     // Pass gameType and serverIp in customId to keep it stateless and fit the 5-field limit!
+    let guessedQueryPort = serverPort;
+    const typeUpper = gameType.toUpperCase();
+    if (typeUpper === 'ARK' || typeUpper === 'ARKSE' || typeUpper === 'ARKSA' || typeUpper === 'VALHEIM') {
+      guessedQueryPort = serverPort + 1;
+    }
+
     const modal = new ModalBuilder()
       .setCustomId(`modal_add_server:${minestratorServerId}:${gameType}:${tokenId}:${autoStopTimeout}:${serverIp}`)
       .setTitle('Configuration RCON & Ports');
@@ -286,9 +307,16 @@ export async function handleContinueButton(interaction: Interaction): Promise<vo
 
     const portInput = new TextInputBuilder()
       .setCustomId('input_port')
-      .setLabel('Port de JEU (ex: 8211)')
+      .setLabel('Port de JEU (ex: 7777 / 2456 / 25565)')
       .setStyle(TextInputStyle.Short)
       .setValue(String(serverPort))
+      .setRequired(true);
+
+    const queryPortInput = new TextInputBuilder()
+      .setCustomId('input_query_port')
+      .setLabel('Port Steam Query (ex: 7778 / 2457)')
+      .setStyle(TextInputStyle.Short)
+      .setValue(String(guessedQueryPort))
       .setRequired(true);
 
     const rconPortInput = new TextInputBuilder()
@@ -296,21 +324,22 @@ export async function handleContinueButton(interaction: Interaction): Promise<vo
       .setLabel('Port RCON (ex: 25575)')
       .setStyle(TextInputStyle.Short)
       .setValue(String(guessedRconPort))
-      .setRequired(true);
+      .setRequired(false);
 
     const passwordInput = new TextInputBuilder()
       .setCustomId('input_password')
       .setLabel('Mot de passe RCON')
       .setStyle(TextInputStyle.Short)
       .setValue(guessedRconPassword)
-      .setRequired(guessedRconPassword === '');
+      .setRequired(false);
 
     const row1 = new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput);
     const row2 = new ActionRowBuilder<TextInputBuilder>().addComponents(portInput);
-    const row3 = new ActionRowBuilder<TextInputBuilder>().addComponents(rconPortInput);
-    const row4 = new ActionRowBuilder<TextInputBuilder>().addComponents(passwordInput);
+    const row3 = new ActionRowBuilder<TextInputBuilder>().addComponents(queryPortInput);
+    const row4 = new ActionRowBuilder<TextInputBuilder>().addComponents(rconPortInput);
+    const row5 = new ActionRowBuilder<TextInputBuilder>().addComponents(passwordInput);
 
-    modal.addComponents(row1, row2, row3, row4);
+    modal.addComponents(row1, row2, row3, row4, row5);
 
     // Open form modal
     await interaction.showModal(modal);
@@ -380,9 +409,22 @@ export async function handleEditButton(interaction: Interaction): Promise<void> 
 
     const portInput = new TextInputBuilder()
       .setCustomId('input_port')
-      .setLabel('Port de JEU (ex: 8211)')
+      .setLabel('Port de JEU (ex: 7777 / 2456)')
       .setStyle(TextInputStyle.Short)
       .setValue(String(server.port))
+      .setRequired(true);
+
+    const currentQueryPort = server.queryPort || (
+      server.gameType.toUpperCase() === 'ARK' || server.gameType.toUpperCase() === 'ARKSA' || server.gameType.toUpperCase() === 'VALHEIM'
+        ? server.port + 1
+        : server.port
+    );
+
+    const queryPortInput = new TextInputBuilder()
+      .setCustomId('input_query_port')
+      .setLabel('Port Steam Query (ex: 7778 / 2457)')
+      .setStyle(TextInputStyle.Short)
+      .setValue(String(currentQueryPort))
       .setRequired(true);
 
     const rconPortInput = new TextInputBuilder()
@@ -390,27 +432,20 @@ export async function handleEditButton(interaction: Interaction): Promise<void> 
       .setLabel('Port RCON (ex: 25575)')
       .setStyle(TextInputStyle.Short)
       .setValue(String(server.rconPort))
-      .setRequired(true);
+      .setRequired(false);
 
     const passwordInput = new TextInputBuilder()
       .setCustomId('input_password')
       .setLabel('Mot de passe RCON')
       .setStyle(TextInputStyle.Short)
       .setValue(server.password)
-      .setRequired(true);
-
-    const gameTypeInput = new TextInputBuilder()
-      .setCustomId('input_game_type')
-      .setLabel('Type de jeu (ex: PALWORLD)')
-      .setStyle(TextInputStyle.Short)
-      .setValue(server.gameType)
-      .setRequired(true);
+      .setRequired(false);
 
     const row1 = new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput);
     const row2 = new ActionRowBuilder<TextInputBuilder>().addComponents(portInput);
-    const row3 = new ActionRowBuilder<TextInputBuilder>().addComponents(rconPortInput);
-    const row4 = new ActionRowBuilder<TextInputBuilder>().addComponents(passwordInput);
-    const row5 = new ActionRowBuilder<TextInputBuilder>().addComponents(gameTypeInput);
+    const row3 = new ActionRowBuilder<TextInputBuilder>().addComponents(queryPortInput);
+    const row4 = new ActionRowBuilder<TextInputBuilder>().addComponents(rconPortInput);
+    const row5 = new ActionRowBuilder<TextInputBuilder>().addComponents(passwordInput);
 
     modal.addComponents(row1, row2, row3, row4, row5);
 
@@ -547,14 +582,16 @@ async function handleAddServerModalSubmit(interaction: Interaction): Promise<voi
   // Retrieve input values
   const name = interaction.fields.getTextInputValue('input_friendly_name').trim();
   const portStr = interaction.fields.getTextInputValue('input_port').trim();
-  const rconPortStr = interaction.fields.getTextInputValue('input_rcon_port').trim();
-  const password = interaction.fields.getTextInputValue('input_password').trim();
+  const queryPortStr = interaction.fields.getTextInputValue('input_query_port')?.trim();
+  const rconPortStr = interaction.fields.getTextInputValue('input_rcon_port')?.trim() || '25575';
+  const password = interaction.fields.getTextInputValue('input_password')?.trim() || '';
 
   // Validate inputs
   const port = parseInt(portStr, 10);
-  const rconPort = parseInt(rconPortStr, 10);
-  if (isNaN(port) || isNaN(rconPort)) {
-    await interaction.editReply('❌ Les ports (Jeu et RCON) doivent être des nombres valides.');
+  const queryPort = queryPortStr ? parseInt(queryPortStr, 10) : null;
+  const rconPort = parseInt(rconPortStr, 10) || 25575;
+  if (isNaN(port)) {
+    await interaction.editReply('❌ Le port de Jeu doit être un nombre valide.');
     return;
   }
 
@@ -594,6 +631,7 @@ async function handleAddServerModalSubmit(interaction: Interaction): Promise<voi
       gameType,
       host: apiHost,
       port,      // Game port
+      queryPort, // Steam query port
       rconPort,  // RCON port
       password,
       autoStopEnabled,
@@ -699,24 +737,18 @@ async function handleEditModalSubmit(interaction: Interaction): Promise<void> {
   // Retrieve input values
   const name = interaction.fields.getTextInputValue('input_friendly_name').trim();
   const portStr = interaction.fields.getTextInputValue('input_port').trim();
-  const rconPortStr = interaction.fields.getTextInputValue('input_rcon_port').trim();
-  const password = interaction.fields.getTextInputValue('input_password').trim();
-  const gameTypeInput = interaction.fields.getTextInputValue('input_game_type').trim();
+  const queryPortStr = interaction.fields.getTextInputValue('input_query_port')?.trim();
+  const rconPortStr = interaction.fields.getTextInputValue('input_rcon_port')?.trim() || '25575';
+  const password = interaction.fields.getTextInputValue('input_password')?.trim() || '';
 
   // Validate inputs
   const port = parseInt(portStr, 10);
-  const rconPort = parseInt(rconPortStr, 10);
-  if (isNaN(port) || isNaN(rconPort)) {
-    await interaction.editReply('❌ Les ports (Jeu et RCON) doivent être des nombres valides.');
+  const queryPort = queryPortStr ? parseInt(queryPortStr, 10) : null;
+  const rconPort = parseInt(rconPortStr, 10) || 25575;
+  if (isNaN(port)) {
+    await interaction.editReply('❌ Le port de Jeu doit être un nombre valide.');
     return;
   }
-
-  if (!gameTypeInput) {
-    await interaction.editReply('❌ Le type de jeu est requis (ex: PALWORLD).');
-    return;
-  }
-
-  const gameType = gameTypeInput.toUpperCase();
 
   try {
     // 2. Update server configuration in database
@@ -725,9 +757,9 @@ async function handleEditModalSubmit(interaction: Interaction): Promise<void> {
       data: {
         name,
         port,
+        queryPort,
         rconPort,
-        password,
-        gameType
+        password
       }
     });
 

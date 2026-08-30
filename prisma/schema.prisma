@@ -39,6 +39,7 @@ model Server {
   gameType            String   // Game identifier (e.g., "PALWORLD")
   host                String   // IP/Host for RCON connection
   port                Int      // Game Port
+  queryPort           Int?     // Steam Query Port
   rconPort            Int      @default(25575) // RCON Port
   password            String   // RCON Password
   autoStopEnabled     Boolean  @default(false)

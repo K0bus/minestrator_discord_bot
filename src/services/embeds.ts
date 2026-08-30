@@ -1,34 +1,49 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { UnifiedTelemetry, ServerStatus } from '../drivers/base.js';
 
 export function createServerEmbed(
   serverName: string,
   gameType: string,
   host: string,
   port: number,
-  telemetry: { status: 'online' | 'offline' | 'error'; playerCount: number; players: string[] },
+  telemetry: {
+    status: 'online' | 'offline' | 'error' | 'restarting' | ServerStatus;
+    playerCount: number;
+    players: string[];
+    unified?: UnifiedTelemetry;
+  },
   autoStop: { enabled: boolean; timeout: number; lastActiveAt: Date },
   eggIcon?: string | null
 ): EmbedBuilder {
+  const unified = telemetry.unified;
+  const statusUpper = (unified?.status || String(telemetry.status)).toUpperCase();
+
   let statusEmoji = '⚪';
   let color = 0x95a5a6;
   let statusText = 'Inconnu';
 
-  if (telemetry.status === 'online') {
+  if (statusUpper === 'ONLINE') {
     statusEmoji = '🟢';
     color = 0x10b981;
     statusText = 'En Ligne';
-  } else if (telemetry.status === 'offline') {
+  } else if (statusUpper === 'OFFLINE') {
     statusEmoji = '🔴';
     color = 0xef4444;
     statusText = 'Hors Ligne / Éteint';
-  } else if (telemetry.status === 'error') {
+  } else if (statusUpper === 'RESTARTING') {
+    statusEmoji = '🔄';
+    color = 0x3b82f6;
+    statusText = 'En Redémarrage / Chargement';
+  } else if (statusUpper === 'ERROR') {
     statusEmoji = '⚠️';
     color = 0xf59e0b;
-    statusText = 'Erreur Connexion RCON';
+    statusText = 'Erreur de Communication';
   }
 
+  const embedTitle = unified?.name ? `🎮 Administration - ${unified.name}` : `🎮 Administration - ${serverName}`;
+
   const embed = new EmbedBuilder()
-    .setTitle(`🎮 Administration - ${serverName}`)
+    .setTitle(embedTitle)
     .setDescription('Configuration de supervision et de contrôle à distance pour votre instance de jeu.')
     .setColor(color);
 
@@ -36,23 +51,38 @@ export function createServerEmbed(
     embed.setThumbnail(`https://cdn.minestrator.com/eggs/${eggIcon}`);
   }
 
+  const connectAddr = unified?.connect || `${host}:${port}`;
   embed.addFields(
-    { name: '📍 Adresse du serveur', value: `\`${host}:${port}\``, inline: true },
+    { name: '📍 Adresse du serveur', value: `\`${connectAddr}\``, inline: true },
     { name: '👾 Jeu', value: `\`${gameType}\``, inline: true },
     { name: '📡 Statut', value: `${statusEmoji} **${statusText}**`, inline: true }
   );
 
-  if (telemetry.status === 'online') {
-    const playersVal = telemetry.playerCount > 0
-      ? telemetry.players.map(p => `• \`${p}\``).join('\n')
+  // Add Map & Ping fields if available from unified telemetry
+  if (unified?.map && unified.map !== 'N/A') {
+    embed.addFields({ name: '🗺️ Carte / Map', value: `\`${unified.map}\``, inline: true });
+  }
+
+  if (unified?.ping !== undefined && unified.ping >= 0) {
+    embed.addFields({ name: '📶 Latence (Ping)', value: `\`${unified.ping} ms\``, inline: true });
+  }
+
+  const onlineCount = unified?.players.online ?? telemetry.playerCount;
+  const maxCount = unified?.players.max ?? 0;
+  const playerList = unified?.players.list ?? telemetry.players;
+  const countLabel = maxCount > 0 ? `${onlineCount}/${maxCount}` : `${onlineCount}`;
+
+  if (statusUpper === 'ONLINE' || statusUpper === 'RESTARTING') {
+    const playersVal = playerList.length > 0
+      ? playerList.map(p => `• \`${p}\``).join('\n')
       : '*Aucun joueur connecté*';
 
     embed.addFields(
-      { name: `👥 Joueurs en ligne (${telemetry.playerCount})`, value: playersVal, inline: false }
+      { name: `👥 Joueurs en ligne (${countLabel})`, value: playersVal, inline: false }
     );
 
     if (autoStop.enabled) {
-      if (telemetry.playerCount === 0) {
+      if (onlineCount === 0) {
         const shutdownTime = new Date(autoStop.lastActiveAt.getTime() + autoStop.timeout * 60 * 1000);
         const shutdownTimestamp = Math.floor(shutdownTime.getTime() / 1000);
 
@@ -71,7 +101,7 @@ export function createServerEmbed(
     }
   } else {
     embed.addFields(
-      { name: '👥 Joueurs en ligne', value: telemetry.status === 'offline' ? '*Serveur éteint*' : '*Erreur de communication RCON*', inline: false }
+      { name: '👥 Joueurs en ligne', value: statusUpper === 'OFFLINE' ? '*Serveur éteint*' : '*Erreur de communication*', inline: false }
     );
   }
 
@@ -84,7 +114,11 @@ export function createServerEmbed(
   return embed;
 }
 
-export function createControlButtons(status: 'online' | 'offline' | 'error'): ActionRowBuilder<ButtonBuilder>[] {
+export function createControlButtons(status: string): ActionRowBuilder<ButtonBuilder>[] {
+  const statusUpper = status.toUpperCase();
+  const isOnline = statusUpper === 'ONLINE';
+  const isOffline = statusUpper === 'OFFLINE';
+
   const powerRow = new ActionRowBuilder<ButtonBuilder>();
   const adminRow = new ActionRowBuilder<ButtonBuilder>();
 
@@ -93,21 +127,21 @@ export function createControlButtons(status: 'online' | 'offline' | 'error'): Ac
     .setLabel('Démarrer')
     .setStyle(ButtonStyle.Success)
     .setEmoji('▶️')
-    .setDisabled(status === 'online');
+    .setDisabled(isOnline);
 
   const stopBtn = new ButtonBuilder()
     .setCustomId('power_stop')
     .setLabel('Arrêter')
     .setStyle(ButtonStyle.Danger)
     .setEmoji('⏹️')
-    .setDisabled(status === 'offline');
+    .setDisabled(isOffline);
 
   const restartBtn = new ButtonBuilder()
     .setCustomId('power_restart')
     .setLabel('Redémarrer')
     .setStyle(ButtonStyle.Primary)
     .setEmoji('🔄')
-    .setDisabled(status === 'offline');
+    .setDisabled(isOffline);
 
   powerRow.addComponents(startBtn, stopBtn, restartBtn);
 

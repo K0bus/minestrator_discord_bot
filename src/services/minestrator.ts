@@ -149,6 +149,52 @@ export class MinestratorClient {
       return null;
     }
   }
+
+  /**
+   * Fetches detailed server state/metrics from MineStrator API.
+   */
+  async getServerData(): Promise<{
+    powerState?: string;
+    isOnline?: boolean;
+    isStarting?: boolean;
+    cpu?: number;
+    ram?: number;
+    name?: string;
+    raw?: unknown;
+  } | null> {
+    const url = `${this.baseUrl}/server/${this.serverId}`;
+    const headers = {
+      'Authorization': this.getAuthHeader(),
+      'Accept': 'application/json'
+    };
+
+    try {
+      console.log(`[MinestratorClient] Fetching server status from ${url}`);
+      const response = await axios.get(url, { headers, timeout: 5000 });
+      const server = response.data?.api?.data?.server || response.data?.api?.data;
+
+      if (!server) return null;
+
+      const powerState = String(server.power_state || server.status || '').toLowerCase();
+      const cpu = parseFloat(server.cpu || server.metrics?.cpu || 0);
+      const ram = parseFloat(server.ram || server.metrics?.ram || 0);
+      const isOnline = powerState === 'started' || powerState === 'start' || powerState === 'running' || powerState === 'online';
+      const isStarting = powerState === 'starting' || powerState === 'restart' || powerState === 'restarting';
+
+      return {
+        powerState,
+        isOnline,
+        isStarting,
+        cpu,
+        ram,
+        name: server.name,
+        raw: response.data
+      };
+    } catch (error) {
+      console.warn(`[MinestratorClient] Failed to fetch server status for ${this.serverId}:`, error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  }
 }
 
 export interface MinestratorServerInfo {

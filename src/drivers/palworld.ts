@@ -234,4 +234,28 @@ export class PalworldDriver extends GameDriver {
       client.destroy();
     }
   }
+
+  async getUnifiedTelemetry(): Promise<import('./base.js').UnifiedTelemetry> {
+    const telemetry = await this.getTelemetry();
+    const statusMap: Record<string, import('./base.js').ServerStatus> = {
+      'online': 'ONLINE',
+      'offline': 'OFFLINE',
+      'restarting': 'RESTARTING',
+      'error': 'ERROR'
+    };
+
+    return {
+      game: 'palworld',
+      status: statusMap[telemetry.status] || 'OFFLINE',
+      name: 'Serveur Palworld',
+      map: 'Palworld Map',
+      connect: `${this.host}:${this.port}`,
+      ping: telemetry.status === 'online' ? 0 : -1,
+      players: {
+        online: telemetry.playerCount,
+        max: 32,
+        list: telemetry.players
+      }
+    };
+  }
 }
