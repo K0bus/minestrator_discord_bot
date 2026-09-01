@@ -21,9 +21,10 @@ client.once('ready', async () => {
     console.error('[Bot] Erreur lors du déploiement des commandes Slash :', error);
   }
 
-  // Initialize and run the monitoring loop (poll every 5 seconds)
+  // Initialize and run the monitoring loop (default: every 15 seconds)
+  const monitorInterval = process.env.MONITOR_INTERVAL_MS ? parseInt(process.env.MONITOR_INTERVAL_MS, 10) : 15000;
   monitorService = new MonitorService(client, prisma);
-  monitorService.start(5000);
+  monitorService.start(monitorInterval);
 });
 
 client.on('interactionCreate', async (interaction) => {

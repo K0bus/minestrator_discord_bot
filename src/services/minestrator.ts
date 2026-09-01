@@ -151,56 +151,98 @@ export class MinestratorClient {
   }
 
   /**
+   * Helper to parse and normalize server data payload from different Minestrator API endpoints.
+   */
+  private parseServerPayload(server: Record<string, unknown>, raw: unknown): MinestratorServerData {
+    const powerState = String(
+      server.power_state ?? server.power ?? server.status ?? server.state ?? ''
+    ).toLowerCase();
+
+    const metrics = (typeof server.metrics === 'object' && server.metrics !== null ? server.metrics : {}) as Record<string, unknown>;
+
+    const cpu = parseFloat(String(server.cpu ?? metrics.cpu ?? 0)) || 0;
+    const ram = parseFloat(String(server.ram ?? metrics.ram ?? 0)) || 0;
+    const disk = parseFloat(String(server.disk ?? metrics.disk ?? 0)) || 0;
+
+    const isOnline = powerState === 'started' || powerState === 'start' || powerState === 'running' || powerState === 'online' || powerState === 'up' || server.is_online === true || server.online === true;
+    const isStarting = powerState === 'starting' || powerState === 'restart' || powerState === 'restarting' || powerState === 'booting';
+    const isStopping = powerState === 'stopping' || powerState === 'stop' || powerState === 'shutting_down';
+
+    const rawPlayers = server.players ?? metrics.players ?? server.players_count ?? metrics.players_count;
+    const playersCount = typeof rawPlayers === 'number'
+      ? rawPlayers
+      : (typeof rawPlayers === 'string' && !isNaN(parseInt(rawPlayers, 10)) ? parseInt(rawPlayers, 10) : undefined);
+
+    const rawMax = server.max_players ?? metrics.max_players ?? server.maxplayers ?? metrics.maxplayers;
+    const maxPlayers = typeof rawMax === 'number'
+      ? rawMax
+      : (typeof rawMax === 'string' && !isNaN(parseInt(rawMax, 10)) ? parseInt(rawMax, 10) : undefined);
+
+    return {
+      powerState: powerState || (isOnline ? 'started' : 'stopped'),
+      isOnline,
+      isStarting,
+      isStopping,
+      cpu,
+      ram,
+      disk,
+      name: typeof server.name === 'string' ? server.name : undefined,
+      playersCount,
+      maxPlayers,
+      raw
+    };
+  }
+
+  /**
    * Fetches detailed server state/metrics from MineStrator API.
+   * Tries `/server/{id}/live` then fallback to `/server/{id}` or `/user/{id}/servers`.
    */
   async getServerData(): Promise<MinestratorServerData | null> {
-    const url = `${this.baseUrl}/server/${this.serverId}`;
     const headers = {
       'Authorization': this.getAuthHeader(),
       'Accept': 'application/json'
     };
 
+    // 1. First Attempt: GET /server/{id}/live (official real-time statistics endpoint)
     try {
-      console.log(`[MinestratorClient] Fetching server status from ${url}`);
-      const response = await axios.get(url, { headers, timeout: 5000 });
-      const server = response.data?.api?.data?.server || response.data?.api?.data;
+      const liveUrl = `${this.baseUrl}/server/${this.serverId}/live`;
+      const response = await axios.get(liveUrl, { headers, timeout: 6000 });
+      const data = response.data?.api?.data?.live || response.data?.api?.data?.server || response.data?.api?.data;
 
-      if (!server) return null;
-
-      const powerState = String(server.power_state || server.status || '').toLowerCase();
-      const cpu = parseFloat(server.cpu || server.metrics?.cpu || 0);
-      const ram = parseFloat(server.ram || server.metrics?.ram || 0);
-      const disk = parseFloat(server.disk || server.metrics?.disk || 0);
-      
-      const isOnline = powerState === 'started' || powerState === 'start' || powerState === 'running' || powerState === 'online';
-      const isStarting = powerState === 'starting' || powerState === 'restart' || powerState === 'restarting';
-      const isStopping = powerState === 'stopping' || powerState === 'stop';
-
-      const playersCount = server.players !== undefined && typeof server.players === 'number'
-        ? server.players
-        : (server.metrics?.players !== undefined ? Number(server.metrics.players) : undefined);
-      
-      const maxPlayers = server.max_players !== undefined && typeof server.max_players === 'number'
-        ? server.max_players
-        : (server.metrics?.max_players !== undefined ? Number(server.metrics.max_players) : undefined);
-
-      return {
-        powerState,
-        isOnline,
-        isStarting,
-        isStopping,
-        cpu,
-        ram,
-        disk,
-        name: server.name,
-        playersCount,
-        maxPlayers,
-        raw: response.data
-      };
-    } catch (error) {
-      console.warn(`[MinestratorClient] Failed to fetch server status for ${this.serverId}:`, error instanceof Error ? error.message : String(error));
-      return null;
+      if (data && typeof data === 'object') {
+        return this.parseServerPayload(data as Record<string, unknown>, response.data);
+      }
+    } catch (liveError) {
+      console.log(`[MinestratorClient] /server/${this.serverId}/live fallback (${axios.isAxiosError(liveError) ? liveError.response?.status : liveError}).`);
     }
+
+    // 2. Second Attempt: GET /server/{id}
+    try {
+      const serverUrl = `${this.baseUrl}/server/${this.serverId}`;
+      const response = await axios.get(serverUrl, { headers, timeout: 6000 });
+      const data = response.data?.api?.data?.server || response.data?.api?.data;
+
+      if (data && typeof data === 'object') {
+        return this.parseServerPayload(data as Record<string, unknown>, response.data);
+      }
+    } catch (serverError) {
+      console.log(`[MinestratorClient] /server/${this.serverId} fallback (${axios.isAxiosError(serverError) ? serverError.response?.status : serverError}).`);
+    }
+
+    // 3. Third Attempt: List all user servers via GET /user/{userId}/servers
+    try {
+      const userId = await this.getUserId();
+      const servers = await this.listServers(userId);
+      const matched = servers.find(s => String(s.id) === String(this.serverId));
+
+      if (matched && typeof matched === 'object') {
+        return this.parseServerPayload(matched as unknown as Record<string, unknown>, matched);
+      }
+    } catch (userServersError) {
+      console.warn(`[MinestratorClient] All server status endpoints failed for ${this.serverId}:`, userServersError instanceof Error ? userServersError.message : String(userServersError));
+    }
+
+    return null;
   }
 }
 
