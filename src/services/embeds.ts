@@ -67,15 +67,35 @@ export function createServerEmbed(
     embed.addFields({ name: '📶 Latence (Ping)', value: `\`${unified.ping} ms\``, inline: true });
   }
 
+  // Add CPU and RAM metrics if available from API / raw_metrics
+  const rawMetrics = unified?.raw_metrics as Record<string, unknown> | undefined;
+  if (rawMetrics && (rawMetrics.apiDriven || rawMetrics.fallback)) {
+    if (rawMetrics.cpu !== undefined && rawMetrics.ram !== undefined) {
+      const cpuVal = typeof rawMetrics.cpu === 'number' ? `${rawMetrics.cpu.toFixed(1)}%` : `${rawMetrics.cpu}%`;
+      const ramVal = typeof rawMetrics.ram === 'number' ? `${rawMetrics.ram.toFixed(0)} MB` : `${rawMetrics.ram} MB`;
+      embed.addFields(
+        { name: '⚡ CPU', value: `\`${cpuVal}\``, inline: true },
+        { name: '💾 RAM', value: `\`${ramVal}\``, inline: true }
+      );
+    }
+  }
+
   const onlineCount = unified?.players.online ?? telemetry.playerCount;
   const maxCount = unified?.players.max ?? 0;
   const playerList = unified?.players.list ?? telemetry.players;
   const countLabel = maxCount > 0 ? `${onlineCount}/${maxCount}` : `${onlineCount}`;
 
   if (statusUpper === 'ONLINE' || statusUpper === 'RESTARTING') {
-    const playersVal = playerList.length > 0
-      ? playerList.map(p => `• \`${p}\``).join('\n')
-      : '*Aucun joueur connecté*';
+    let playersVal: string;
+    if (playerList.length > 0) {
+      playersVal = playerList.map(p => `• \`${p}\``).join('\n');
+    } else if (onlineCount > 0) {
+      playersVal = `• \`${onlineCount} joueur(s) en ligne\``;
+    } else if (rawMetrics?.apiDriven || rawMetrics?.fallback) {
+      playersVal = '*Aucun joueur détecté (Supervision API)*';
+    } else {
+      playersVal = '*Aucun joueur connecté*';
+    }
 
     embed.addFields(
       { name: `👥 Joueurs en ligne (${countLabel})`, value: playersVal, inline: false }

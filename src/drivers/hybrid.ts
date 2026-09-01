@@ -35,24 +35,28 @@ export class HybridGameDriver extends GameDriver {
       const apiData = await this.minestratorClient.getServerData();
 
       if (apiData) {
-        if (apiData.isStarting) {
+        const onlinePlayers = apiData.playersCount ?? 0;
+        const maxPlayers = apiData.maxPlayers ?? 0;
+
+        if (apiData.isStarting || apiData.isStopping) {
           return {
             game: directResult.game,
             status: 'RESTARTING',
             name: apiData.name || directResult.name,
-            map: 'En cours de chargement...',
+            map: apiData.isStarting ? 'En cours de démarrage...' : 'En cours d\'arrêt...',
             connect: `${this.host}:${this.port}`,
             ping: -1,
             players: {
-              online: 0,
-              max: 0,
+              online: onlinePlayers,
+              max: maxPlayers,
               list: []
             },
             raw_metrics: {
               fallback: true,
               powerState: apiData.powerState,
               cpu: apiData.cpu,
-              ram: apiData.ram
+              ram: apiData.ram,
+              disk: apiData.disk
             }
           };
         }
@@ -66,15 +70,16 @@ export class HybridGameDriver extends GameDriver {
             connect: `${this.host}:${this.port}`,
             ping: 0,
             players: {
-              online: 0,
-              max: 0,
+              online: onlinePlayers,
+              max: maxPlayers,
               list: []
             },
             raw_metrics: {
               fallback: true,
               powerState: apiData.powerState,
               cpu: apiData.cpu,
-              ram: apiData.ram
+              ram: apiData.ram,
+              disk: apiData.disk
             }
           };
         }

@@ -153,15 +153,7 @@ export class MinestratorClient {
   /**
    * Fetches detailed server state/metrics from MineStrator API.
    */
-  async getServerData(): Promise<{
-    powerState?: string;
-    isOnline?: boolean;
-    isStarting?: boolean;
-    cpu?: number;
-    ram?: number;
-    name?: string;
-    raw?: unknown;
-  } | null> {
+  async getServerData(): Promise<MinestratorServerData | null> {
     const url = `${this.baseUrl}/server/${this.serverId}`;
     const headers = {
       'Authorization': this.getAuthHeader(),
@@ -178,16 +170,31 @@ export class MinestratorClient {
       const powerState = String(server.power_state || server.status || '').toLowerCase();
       const cpu = parseFloat(server.cpu || server.metrics?.cpu || 0);
       const ram = parseFloat(server.ram || server.metrics?.ram || 0);
+      const disk = parseFloat(server.disk || server.metrics?.disk || 0);
+      
       const isOnline = powerState === 'started' || powerState === 'start' || powerState === 'running' || powerState === 'online';
       const isStarting = powerState === 'starting' || powerState === 'restart' || powerState === 'restarting';
+      const isStopping = powerState === 'stopping' || powerState === 'stop';
+
+      const playersCount = server.players !== undefined && typeof server.players === 'number'
+        ? server.players
+        : (server.metrics?.players !== undefined ? Number(server.metrics.players) : undefined);
+      
+      const maxPlayers = server.max_players !== undefined && typeof server.max_players === 'number'
+        ? server.max_players
+        : (server.metrics?.max_players !== undefined ? Number(server.metrics.max_players) : undefined);
 
       return {
         powerState,
         isOnline,
         isStarting,
+        isStopping,
         cpu,
         ram,
+        disk,
         name: server.name,
+        playersCount,
+        maxPlayers,
         raw: response.data
       };
     } catch (error) {
@@ -195,6 +202,20 @@ export class MinestratorClient {
       return null;
     }
   }
+}
+
+export interface MinestratorServerData {
+  powerState?: string;
+  isOnline?: boolean;
+  isStarting?: boolean;
+  isStopping?: boolean;
+  cpu?: number;
+  ram?: number;
+  disk?: number;
+  name?: string;
+  playersCount?: number;
+  maxPlayers?: number;
+  raw?: unknown;
 }
 
 export interface MinestratorServerInfo {

@@ -78,7 +78,7 @@ async function handleServerSelection(interaction: StringSelectMenuInteraction): 
     const eggName = serverInfo?.egg_name || '';
 
     // Auto-detect Game Type from egg_name
-    let guessedGameType = 'MINECRAFT';
+    let guessedGameType = 'OTHER';
     const eggLower = eggName.toLowerCase();
     if (eggLower.includes('palworld')) {
       guessedGameType = 'PALWORLD';
@@ -105,9 +105,10 @@ async function handleServerSelection(interaction: StringSelectMenuInteraction): 
       { label: 'Palworld', value: 'PALWORLD', description: 'Jeu Palworld (Support RCON et Query)' },
       { label: 'ARK: Survival Evolved', value: 'ARK', description: 'Serveur ARK: SE (Query UDP)' },
       { label: 'ARK: Survival Ascended', value: 'ARKSA', description: 'Serveur ARK: SA (Query UDP)' },
-      { label: 'Valheim', value: 'VALHEIM', description: 'Serveur Valheim (Query UDP)' },
+      { label: 'Valheim', value: 'VALHEIM', description: 'Serveur Valheim (Supervision API MineStrator)' },
       { label: 'Minecraft', value: 'MINECRAFT', description: 'Serveur de jeu Minecraft' },
-      { label: 'Satisfactory', value: 'SATISFACTORY', description: 'Serveur de jeu Satisfactory' }
+      { label: 'Satisfactory', value: 'SATISFACTORY', description: 'Serveur de jeu Satisfactory' },
+      { label: 'Autre Jeu (API MineStrator)', value: 'OTHER', description: 'Tout autre jeu hébergé (Supervision API)' }
     ];
 
     for (const opt of gameOptions) {
@@ -177,9 +178,10 @@ async function handleGameTypeSelection(interaction: StringSelectMenuInteraction)
       { label: 'Palworld', value: 'PALWORLD', description: 'Jeu Palworld (Support RCON et Query)' },
       { label: 'ARK: Survival Evolved', value: 'ARK', description: 'Serveur ARK: SE (Query UDP)' },
       { label: 'ARK: Survival Ascended', value: 'ARKSA', description: 'Serveur ARK: SA (Query UDP)' },
-      { label: 'Valheim', value: 'VALHEIM', description: 'Serveur Valheim (Query UDP)' },
+      { label: 'Valheim', value: 'VALHEIM', description: 'Serveur Valheim (Supervision API MineStrator)' },
       { label: 'Minecraft', value: 'MINECRAFT', description: 'Serveur de jeu Minecraft' },
-      { label: 'Satisfactory', value: 'SATISFACTORY', description: 'Serveur de jeu Satisfactory' }
+      { label: 'Satisfactory', value: 'SATISFACTORY', description: 'Serveur de jeu Satisfactory' },
+      { label: 'Autre Jeu (API MineStrator)', value: 'OTHER', description: 'Tout autre jeu hébergé (Supervision API)' }
     ];
 
     for (const opt of gameOptions) {
@@ -290,7 +292,7 @@ export async function handleContinueButton(interaction: Interaction): Promise<vo
     // Pass gameType and serverIp in customId to keep it stateless and fit the 5-field limit!
     let guessedQueryPort = serverPort;
     const typeUpper = gameType.toUpperCase();
-    if (typeUpper === 'ARK' || typeUpper === 'ARKSE' || typeUpper === 'ARKSA' || typeUpper === 'VALHEIM') {
+    if (typeUpper === 'ARK' || typeUpper === 'ARKSE' || typeUpper === 'ARKSA') {
       guessedQueryPort = serverPort + 1;
     }
 
@@ -415,7 +417,7 @@ export async function handleEditButton(interaction: Interaction): Promise<void> 
       .setRequired(true);
 
     const currentQueryPort = server.queryPort || (
-      server.gameType.toUpperCase() === 'ARK' || server.gameType.toUpperCase() === 'ARKSA' || server.gameType.toUpperCase() === 'VALHEIM'
+      server.gameType.toUpperCase() === 'ARK' || server.gameType.toUpperCase() === 'ARKSA'
         ? server.port + 1
         : server.port
     );
