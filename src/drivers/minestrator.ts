@@ -64,20 +64,15 @@ export class MinestratorDriver extends GameDriver {
       }
 
       let status: ServerStatus = 'OFFLINE';
-      let map = 'N/A';
 
       if (serverData.isStarting) {
         status = 'RESTARTING';
-        map = 'En cours de démarrage...';
       } else if (serverData.isOnline) {
         status = 'ONLINE';
-        map = 'En ligne (API MineStrator)';
       } else if (serverData.isStopping) {
         status = 'RESTARTING';
-        map = 'En cours d\'arrêt...';
       } else {
         status = 'OFFLINE';
-        map = 'Éteint';
       }
 
       const onlinePlayers = serverData.playersCount ?? 0;
@@ -87,7 +82,7 @@ export class MinestratorDriver extends GameDriver {
         game: this.gameType.toLowerCase(),
         status,
         name: serverData.name || `Serveur ${this.gameType}`,
-        map,
+        map: 'N/A',
         connect: connectAddress,
         ping: serverData.isOnline ? ping : -1,
         players: {

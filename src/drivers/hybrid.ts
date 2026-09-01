@@ -43,7 +43,7 @@ export class HybridGameDriver extends GameDriver {
             game: directResult.game,
             status: 'RESTARTING',
             name: apiData.name || directResult.name,
-            map: apiData.isStarting ? 'En cours de démarrage...' : 'En cours d\'arrêt...',
+            map: 'N/A',
             connect: `${this.host}:${this.port}`,
             ping: -1,
             players: {
@@ -66,7 +66,7 @@ export class HybridGameDriver extends GameDriver {
             game: directResult.game,
             status: 'ONLINE',
             name: apiData.name || directResult.name,
-            map: 'En ligne (Fallback API)',
+            map: 'N/A',
             connect: `${this.host}:${this.port}`,
             ping: 0,
             players: {

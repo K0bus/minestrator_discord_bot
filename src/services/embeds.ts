@@ -58,8 +58,11 @@ export function createServerEmbed(
     { name: '📡 Statut', value: `${statusEmoji} **${statusText}**`, inline: true }
   );
 
-  // Add Map & Ping fields if available from unified telemetry
-  if (unified?.map && unified.map !== 'N/A') {
+  const rawMetrics = unified?.raw_metrics as Record<string, unknown> | undefined;
+  const isApiDriven = rawMetrics?.apiDriven === true || rawMetrics?.fallback === true;
+
+  // Add Map field only if available from direct game query (never when API-driven)
+  if (!isApiDriven && unified?.map && !['N/A', 'Inconnue', 'Inconnu', 'None', '', 'introuvable', 'Introuvable'].includes(unified.map)) {
     embed.addFields({ name: '🗺️ Carte / Map', value: `\`${unified.map}\``, inline: true });
   }
 
@@ -68,8 +71,7 @@ export function createServerEmbed(
   }
 
   // Add CPU and RAM metrics if available from API / raw_metrics
-  const rawMetrics = unified?.raw_metrics as Record<string, unknown> | undefined;
-  if (rawMetrics && (rawMetrics.apiDriven || rawMetrics.fallback)) {
+  if (isApiDriven && rawMetrics) {
     if (rawMetrics.cpu !== undefined && rawMetrics.ram !== undefined) {
       const cpuVal = typeof rawMetrics.cpu === 'number' ? `${rawMetrics.cpu.toFixed(1)}%` : `${rawMetrics.cpu}%`;
       const ramVal = typeof rawMetrics.ram === 'number' ? `${rawMetrics.ram.toFixed(0)} MB` : `${rawMetrics.ram} MB`;
