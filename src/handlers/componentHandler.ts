@@ -62,12 +62,20 @@ async function handleServerSelection(interaction: StringSelectMenuInteraction): 
   const minestratorServerId = interaction.values[0];
 
   try {
-    const token = await prisma.token.findUnique({
+    let token = await prisma.token.findUnique({
       where: { id: tokenId }
     });
 
+    if (!token && interaction.guildId) {
+      console.warn(`[ComponentHandler] Token ID "${tokenId}" introuvable. Tentative de récupération du token par guildId "${interaction.guildId}"...`);
+      token = await prisma.token.findFirst({
+        where: { guildId: interaction.guildId }
+      });
+    }
+
     if (!token) {
-      await interaction.reply({ content: '❌ Token API introuvable en base.', ephemeral: true });
+      console.error(`[ComponentHandler] Aucun token trouvé pour le serveur Discord ${interaction.guildId} (ID recherché: ${tokenId})`);
+      await interaction.reply({ content: '❌ Token API introuvable en base. Veuillez enregistrer une clé avec `/setup-token`.', ephemeral: true });
       return;
     }
 
@@ -256,12 +264,20 @@ export async function handleContinueButton(interaction: Interaction): Promise<vo
   }
 
   try {
-    const token = await prisma.token.findUnique({
+    let token = await prisma.token.findUnique({
       where: { id: tokenId }
     });
 
+    if (!token && interaction.guildId) {
+      console.warn(`[ComponentHandler] Token ID "${tokenId}" introuvable dans handleContinueButton. Tentative de récupération du token par guildId "${interaction.guildId}"...`);
+      token = await prisma.token.findFirst({
+        where: { guildId: interaction.guildId }
+      });
+    }
+
     if (!token) {
-      await interaction.reply({ content: '❌ Token API introuvable en base.', ephemeral: true });
+      console.error(`[ComponentHandler] Aucun token trouvé dans handleContinueButton pour le serveur Discord ${interaction.guildId} (ID recherché: ${tokenId})`);
+      await interaction.reply({ content: '❌ Token API introuvable en base. Veuillez enregistrer une clé avec `/setup-token`.', ephemeral: true });
       return;
     }
 
@@ -604,12 +620,20 @@ async function handleAddServerModalSubmit(interaction: Interaction): Promise<voi
   }
 
   try {
-    const token = await prisma.token.findUnique({
+    let token = await prisma.token.findUnique({
       where: { id: tokenId }
     });
 
+    if (!token && guildId) {
+      console.warn(`[ComponentHandler] Token ID "${tokenId}" introuvable dans handleAddServerModalSubmit. Tentative de récupération du token par guildId "${guildId}"...`);
+      token = await prisma.token.findFirst({
+        where: { guildId }
+      });
+    }
+
     if (!token) {
-      await interaction.editReply('❌ Token API introuvable en base.');
+      console.error(`[ComponentHandler] Aucun token trouvé dans handleAddServerModalSubmit pour le serveur Discord ${guildId} (ID recherché: ${tokenId})`);
+      await interaction.editReply('❌ Token API introuvable en base. Veuillez enregistrer une clé avec `/setup-token`.');
       return;
     }
 
