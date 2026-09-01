@@ -14,6 +14,7 @@ export class GameDriverFactory {
     'ARKSE',
     'ARKSA',
     'SATISFACTORY',
+    'VALHEIM',
     'RUST',
     'CONAN'
   ]);
@@ -31,11 +32,11 @@ export class GameDriverFactory {
       case 'ARK':
       case 'ARKSE':
       case 'ARKSA':
+      case 'VALHEIM':
         return gamePort + 1;
       case 'MINECRAFT':
       case 'PALWORLD':
       case 'SATISFACTORY':
-      case 'VALHEIM':
       default:
         return gamePort;
     }
@@ -46,7 +47,7 @@ export class GameDriverFactory {
    */
   static isApiOnlyGame(gameType: string): boolean {
     const type = gameType.toUpperCase();
-    if (type === 'VALHEIM' || type === 'OTHER' || type === 'CUSTOM' || type === 'MINESTRATOR' || type === 'GENERIC') {
+    if (type === 'OTHER' || type === 'CUSTOM' || type === 'MINESTRATOR' || type === 'GENERIC') {
       return true;
     }
     return !this.QUERY_SUPPORTED_GAMES.has(type);
