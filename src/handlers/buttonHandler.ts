@@ -2,7 +2,18 @@ import { Interaction, PermissionFlagsBits } from 'discord.js';
 import { PrismaClient } from '@prisma/client';
 import { MinestratorClient, PowerAction } from '../services/minestrator.js';
 import { decrypt } from '../services/encryption.js';
-import { handleContinueButton, handleEditButton, handlePermissionsButton, handleAnnouncementsButton, handleDisableAnnouncementsButton } from './componentHandler.js';
+import { 
+  handleContinueButton, 
+  handleEditButton, 
+  handlePermissionsButton, 
+  handleAnnouncementsButton, 
+  handleDisableAnnouncementsButton,
+  handleEditTokenButton,
+  handleDeleteTokenButton,
+  handleConfirmDeleteTokenButton,
+  handleTestTokenButton,
+  handleListTokensButton
+} from './componentHandler.js';
 
 const prisma = new PrismaClient();
 
@@ -16,6 +27,32 @@ export async function handleButton(interaction: Interaction): Promise<unknown> {
   
   if (customId.startsWith('btn_continue_add_server:')) {
     await handleContinueButton(interaction);
+    return;
+  }
+
+  // Token Management Buttons
+  if (customId.startsWith('btn_edit_token:')) {
+    await handleEditTokenButton(interaction);
+    return;
+  }
+
+  if (customId.startsWith('btn_test_token:')) {
+    await handleTestTokenButton(interaction);
+    return;
+  }
+
+  if (customId.startsWith('btn_delete_token:')) {
+    await handleDeleteTokenButton(interaction);
+    return;
+  }
+
+  if (customId.startsWith('btn_confirm_delete_token:')) {
+    await handleConfirmDeleteTokenButton(interaction);
+    return;
+  }
+
+  if (customId.startsWith('btn_cancel_delete_token:') || customId === 'btn_list_tokens') {
+    await handleListTokensButton(interaction);
     return;
   }
 

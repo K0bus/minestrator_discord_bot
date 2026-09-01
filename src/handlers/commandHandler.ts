@@ -1,6 +1,7 @@
 import { Interaction } from 'discord.js';
 import * as setupCommand from '../commands/setup.js';
 import * as addServerCommand from '../commands/addServer.js';
+import * as manageTokensCommand from '../commands/manageTokens.js';
 
 /**
  * Routes and handles incoming Slash Command interactions.
@@ -15,6 +16,8 @@ export async function handleCommand(interaction: Interaction): Promise<void> {
       await setupCommand.execute(interaction);
     } else if (commandName === 'add-server') {
       await addServerCommand.execute(interaction);
+    } else if (commandName === 'manage-tokens') {
+      await manageTokensCommand.execute(interaction);
     } else {
       await interaction.reply({ content: '❌ Commande inconnue.', ephemeral: true });
     }

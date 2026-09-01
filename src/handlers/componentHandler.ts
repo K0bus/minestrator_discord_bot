@@ -14,12 +14,14 @@ import {
   MentionableSelectMenuInteraction,
   ChannelSelectMenuBuilder,
   ChannelSelectMenuInteraction,
-  ChannelType
+  ChannelType,
+  EmbedBuilder
 } from 'discord.js';
 import { PrismaClient } from '@prisma/client';
 import { MinestratorClient, parseRconFromProperties } from '../services/minestrator.js';
-import { decrypt } from '../services/encryption.js';
+import { encrypt, decrypt } from '../services/encryption.js';
 import { createServerEmbed, createControlButtons } from '../services/embeds.js';
+import { buildTokensListResponse } from '../commands/manageTokens.js';
 
 const prisma = new PrismaClient();
 
@@ -35,6 +37,8 @@ export async function handleSelectMenu(interaction: Interaction): Promise<void> 
     await handleServerSelection(interaction);
   } else if (customId.startsWith('select_game_type:')) {
     await handleGameTypeSelection(interaction);
+  } else if (customId === 'select_token_to_manage') {
+    await handleSelectTokenToManage(interaction);
   }
 }
 
@@ -541,6 +545,8 @@ export async function handleModalSubmit(interaction: Interaction): Promise<void>
     await handleAddServerModalSubmit(interaction);
   } else if (customId.startsWith('modal_edit_server:')) {
     await handleEditModalSubmit(interaction);
+  } else if (customId.startsWith('modal_edit_token:')) {
+    await handleEditTokenModalSubmit(interaction);
   }
 }
 
@@ -1043,3 +1049,345 @@ export async function handleDisableAnnouncementsButton(interaction: Interaction)
     await interaction.editReply(`❌ Une erreur est survenue lors de la désactivation des annonces : ${rawMessage}`);
   }
 }
+
+/**
+ * Handles selection of a token from the manage-tokens select menu.
+ */
+export async function handleSelectTokenToManage(interaction: StringSelectMenuInteraction): Promise<void> {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: '❌ Seuls les administrateurs peuvent gérer les clés API.', ephemeral: true });
+    return;
+  }
+
+  const tokenId = interaction.values[0];
+  const token = await prisma.token.findUnique({
+    where: { id: tokenId },
+    include: {
+      servers: { select: { id: true, name: true, gameType: true } }
+    }
+  });
+
+  if (!token) {
+    await interaction.reply({ content: '❌ Clé API introuvable en base de données.', ephemeral: true });
+    return;
+  }
+
+  const decryptedKey = decrypt(token.encryptedKey);
+  const maskedKey = decryptedKey.length > 8 
+    ? `${decryptedKey.slice(0, 4)}••••••••${decryptedKey.slice(-4)}`
+    : '••••••••';
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🔑 Gestion du Token : ${token.alias}`)
+    .setColor(0x3b82f6)
+    .addFields(
+      { name: '🏷️ Alias', value: `\`${token.alias}\``, inline: true },
+      { name: '🔒 Clé API (masquée)', value: `\`${maskedKey}\``, inline: true },
+      { name: '📅 Date d\'enregistrement', value: `<t:${Math.floor(token.createdAt.getTime() / 1000)}:f>`, inline: false },
+      { 
+        name: `🎮 Serveurs associés (${token.servers.length})`, 
+        value: token.servers.length > 0 
+          ? token.servers.map(s => `• \`${s.name}\` (${s.gameType})`).join('\n') 
+          : '*Aucun serveur associé*', 
+        inline: false 
+      }
+    )
+    .setFooter({ text: `ID: ${token.id}` });
+
+  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_edit_token:${token.id}`)
+      .setLabel('Modifier')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('✏️'),
+    new ButtonBuilder()
+      .setCustomId(`btn_test_token:${token.id}`)
+      .setLabel('Tester la connexion API')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('🔄'),
+    new ButtonBuilder()
+      .setCustomId(`btn_delete_token:${token.id}`)
+      .setLabel('Supprimer')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🗑️')
+  );
+
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('btn_list_tokens')
+      .setLabel('Retour à la liste des tokens')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('⬅️')
+  );
+
+  await interaction.update({
+    embeds: [embed],
+    components: [row1, row2]
+  });
+}
+
+/**
+ * Handles the click on "Modifier" button for a token to open the Edit Modal.
+ */
+export async function handleEditTokenButton(interaction: Interaction): Promise<void> {
+  if (!interaction.isButton()) return;
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: '❌ Seuls les administrateurs peuvent modifier les clés API.', ephemeral: true });
+    return;
+  }
+
+  const tokenId = interaction.customId.split(':')[1];
+  const token = await prisma.token.findUnique({ where: { id: tokenId } });
+
+  if (!token) {
+    await interaction.reply({ content: '❌ Clé API introuvable en base de données.', ephemeral: true });
+    return;
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_edit_token:${token.id}`)
+    .setTitle(`Modifier le Token (${token.alias})`.slice(0, 45));
+
+  const aliasInput = new TextInputBuilder()
+    .setCustomId('input_token_alias')
+    .setLabel('Nom / Alias de la clé API')
+    .setStyle(TextInputStyle.Short)
+    .setValue(token.alias.slice(0, 100))
+    .setRequired(true);
+
+  const keyInput = new TextInputBuilder()
+    .setCustomId('input_token_key')
+    .setLabel('Nouvelle clé API MineStrator (optionnel)')
+    .setPlaceholder('Laissez vide pour conserver la clé actuelle')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(aliasInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(keyInput)
+  );
+
+  await interaction.showModal(modal);
+}
+
+/**
+ * Handles modal submit for editing a token.
+ */
+export async function handleEditTokenModalSubmit(interaction: Interaction): Promise<void> {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: '❌ Seuls les administrateurs peuvent modifier les clés API.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const tokenId = interaction.customId.split(':')[1];
+  const newAlias = interaction.fields.getTextInputValue('input_token_alias').trim();
+  const newKey = interaction.fields.getTextInputValue('input_token_key')?.trim();
+
+  try {
+    const existing = await prisma.token.findUnique({ where: { id: tokenId } });
+    if (!existing) {
+      await interaction.editReply('❌ Clé API introuvable en base de données.');
+      return;
+    }
+
+    // Check unique alias constraint if alias is changing
+    if (newAlias.toLowerCase() !== existing.alias.toLowerCase()) {
+      const aliasConflict = await prisma.token.findUnique({
+        where: {
+          guildId_alias: {
+            guildId: existing.guildId,
+            alias: newAlias
+          }
+        }
+      });
+      if (aliasConflict) {
+        await interaction.editReply(`❌ Une clé API avec l'alias \`${newAlias}\` existe déjà sur ce serveur.`);
+        return;
+      }
+    }
+
+    let encryptedKey = existing.encryptedKey;
+    if (newKey && newKey.length > 0) {
+      // Validate key with Minestrator API
+      try {
+        const testClient = new MinestratorClient(newKey, '0');
+        await testClient.getUserId();
+      } catch (apiErr) {
+        const errMsg = apiErr instanceof Error ? apiErr.message : String(apiErr);
+        console.warn(`[ComponentHandler] Warning when validating key for token ${tokenId}: ${errMsg}`);
+      }
+      encryptedKey = encrypt(newKey);
+    }
+
+    const updated = await prisma.token.update({
+      where: { id: tokenId },
+      data: {
+        alias: newAlias,
+        encryptedKey
+      }
+    });
+
+    await interaction.editReply(`✅ Le token a été mis à jour avec succès sous l'alias **\`${updated.alias}\`** !`);
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    console.error('[ComponentHandler] Error updating token:', error);
+    await interaction.editReply(`❌ Une erreur est survenue lors de la mise à jour du token : ${rawMessage}`);
+  }
+}
+
+/**
+ * Handles testing API connection for a token.
+ */
+export async function handleTestTokenButton(interaction: Interaction): Promise<void> {
+  if (!interaction.isButton()) return;
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: '❌ Seuls les administrateurs peuvent tester les clés API.', ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const tokenId = interaction.customId.split(':')[1];
+  const token = await prisma.token.findUnique({ where: { id: tokenId } });
+
+  if (!token) {
+    await interaction.editReply('❌ Clé API introuvable en base de données.');
+    return;
+  }
+
+  try {
+    const decryptedKey = decrypt(token.encryptedKey);
+    const client = new MinestratorClient(decryptedKey, '0');
+    const userId = await client.getUserId();
+    const servers = await client.listServers(userId);
+
+    await interaction.editReply(`✅ **Connexion réussie à l'API MineStrator !**\n• Compte MineStrator ID : \`${userId}\`\n• Serveurs MineStrator détectés : **${servers.length}**`);
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    console.error('[ComponentHandler] Error testing token:', error);
+    await interaction.editReply(`❌ **Échec de la connexion à l'API MineStrator** : ${rawMessage}`);
+  }
+}
+
+/**
+ * Handles showing the delete token confirmation prompt.
+ */
+export async function handleDeleteTokenButton(interaction: Interaction): Promise<void> {
+  if (!interaction.isButton()) return;
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: '❌ Seuls les administrateurs peuvent supprimer les clés API.', ephemeral: true });
+    return;
+  }
+
+  const tokenId = interaction.customId.split(':')[1];
+  const token = await prisma.token.findUnique({
+    where: { id: tokenId },
+    include: { servers: true }
+  });
+
+  if (!token) {
+    await interaction.reply({ content: '❌ Clé API introuvable en base de données.', ephemeral: true });
+    return;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(`⚠️ Confirmation de suppression du Token : ${token.alias}`)
+    .setColor(0xef4444);
+
+  if (token.servers.length > 0) {
+    embed.setDescription(`Êtes-vous sûr de vouloir supprimer la clé API **\`${token.alias}\`** ?\n\n🚨 **ATTENTION : ${token.servers.length} serveur(s) Discord configuré(s) sont liés à cette clé API.** Supprimer cette clé supprimera également ces serveurs de la base de données : \n${token.servers.map(s => `• \`${s.name}\` (${s.gameType})`).join('\n')}`);
+  } else {
+    embed.setDescription(`Êtes-vous sûr de vouloir supprimer la clé API **\`${token.alias}\`** ?`);
+  }
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`btn_confirm_delete_token:${token.id}`)
+      .setLabel('Confirmer la suppression définitive')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🗑️'),
+    new ButtonBuilder()
+      .setCustomId(`btn_cancel_delete_token:${token.id}`)
+      .setLabel('Annuler')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('❌')
+  );
+
+  await interaction.update({
+    embeds: [embed],
+    components: [row]
+  });
+}
+
+/**
+ * Handles confirming token deletion.
+ */
+export async function handleConfirmDeleteTokenButton(interaction: Interaction): Promise<void> {
+  if (!interaction.isButton()) return;
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: '❌ Seuls les administrateurs peuvent supprimer les clés API.', ephemeral: true });
+    return;
+  }
+
+  const { customId, guildId } = interaction;
+  if (!guildId) return;
+
+  const tokenId = customId.split(':')[1];
+
+  try {
+    // Delete any associated servers first
+    await prisma.server.deleteMany({ where: { tokenId } });
+    // Delete the token
+    await prisma.token.delete({ where: { id: tokenId } });
+
+    const { embeds, components } = await buildTokensListResponse(guildId);
+    if (embeds[0]) {
+      embeds[0].setFooter({ text: '✅ Clé API et serveurs associés supprimés avec succès.' });
+    }
+
+    await interaction.update({
+      embeds,
+      components
+    });
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    console.error('[ComponentHandler] Error deleting token:', error);
+    await interaction.reply({
+      content: `❌ Une erreur est survenue lors de la suppression du token : ${rawMessage}`,
+      ephemeral: true
+    });
+  }
+}
+
+/**
+ * Handles returning to the tokens list.
+ */
+export async function handleListTokensButton(interaction: Interaction): Promise<void> {
+  if (!interaction.isButton()) return;
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({ content: '❌ Seuls les administrateurs peuvent gérer les clés API.', ephemeral: true });
+    return;
+  }
+
+  const guildId = interaction.guildId;
+  if (!guildId) return;
+
+  try {
+    const { embeds, components } = await buildTokensListResponse(guildId);
+    await interaction.update({
+      embeds,
+      components
+    });
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    console.error('[ComponentHandler] Error listing tokens:', error);
+    await interaction.reply({
+      content: `❌ Une erreur est survenue : ${rawMessage}`,
+      ephemeral: true
+    });
+  }
+}
+
